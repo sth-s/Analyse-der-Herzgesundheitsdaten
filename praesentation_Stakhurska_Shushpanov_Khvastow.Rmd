@@ -1,0 +1,199 @@
+---
+title: "Analyse der Herzgesundheitsdaten"
+author: "Kirill Khvastow, Inga Stakhurska, Stefan Shushpanov"
+date: "WS 2023/2024"
+output:
+  beamer_presentation:
+    latex_engine: xelatex
+  powerpoint_presentation: null
+  slidy_presentation: default
+---
+
+## Einführung
+
+-   **Ziel des Projekts:** Untersuchung der Zusammenhänge zwischen verschiedenen Gesundheitsaspekten und Herzkrankheiten.
+-   **Datenquelle:** Kaggle-Dataset von Amir Mahdiabbootalebi.
+-   **Schlüsselfragen:** Gibt es einen signifikanten Unterschied im Ruheblutdruck je nach Brustschmerztyp?
+
+## Datensatz
+
+-   **Umfasst:** 748 Messungen zu Alter, Geschlecht, Brustschmerztyp, Ruheblutdruck, Cholesterinspiegel, maximale Herzrate und Vorhandensein von Herzkrankheiten.
+-   **Zielvariablen:** Ruheblutdruck und Brustschmerztyp.
+
+## Explorative Analyse
+
+### Numerische Zusammenfassungen
+
+-   Die Tabelle zeigt Minimum, Maximum, Durchschnitt und Varianz für Alter, RestingBP, Cholesterin und MaxHR.
+
+```{r numerical-summary, echo=FALSE,message=FALSE,warning=FALSE}
+library(readr)
+data <- read_csv("heart.csv", show_col_types = FALSE)
+
+min_max_values <- data.frame( Minimum = sapply(data[, c("Age", "RestingBP", "Cholesterol", "MaxHR")], min), Maximum = sapply(data[, c("Age", "RestingBP", "Cholesterol", "MaxHR")], max), Mean = sapply(data[, c("Age", "RestingBP", "Cholesterol", "MaxHR")], mean), Variance = sapply(data[, c("Age", "RestingBP", "Cholesterol", "MaxHR")], var) )
+
+print(min_max_values)
+```
+
+## Explorative Analyse
+
+### Verteilungen
+-   Unterschiede im Ruheblutdruck bei verschiedenen Brustschmerztypen in man.
+
+```{r BP_by_ChestPainType_men, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+
+heart_data <- read.csv("heart.csv")
+
+
+ggplot(heart_data, aes(x=RestingBP, fill=ChestPainType)) +
+  geom_density(alpha=0.5) + 
+  facet_wrap(~ChestPainType) + 
+  stat_function(fun=dnorm, args=list(mean=mean(heart_data$RestingBP, na.rm=TRUE), 
+                                     sd=sd(heart_data$RestingBP, na.rm=TRUE)), 
+                color="red", linetype="dashed") +
+  theme_minimal() +
+  labs(title="Probability Distribution of RestingBP for ChestPainType",
+       x="Resting Blood Pressure",
+       y="Density")
+```
+
+## Explorative Analyse
+
+### Verteilungen
+
+-   Unterschiede im Ruheblutdruck bei verschiedenen Brustschmerztypen.
+
+```{r restingBP_violin_by_ChestPain, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+
+heart_data <- read.csv("heart.csv")
+
+heart_data$ChestPainTypeOverall <- 'All'
+
+# Durchschnitt und Varianz berechnen
+stats <- heart_data %>%
+  group_by(ChestPainType) %>%
+  summarise(
+    Mean = mean(RestingBP, na.rm = TRUE),
+    SD = sd(RestingBP, na.rm = TRUE)
+  ) %>%
+  ungroup() 
+
+overall_stats <- data.frame(
+  ChestPainType = "All",
+  Mean = mean(heart_data$RestingBP, na.rm = TRUE),
+  SD = sd(heart_data$RestingBP, na.rm = TRUE)
+)
+
+stats <- rbind(stats, overall_stats)
+
+# Violin-Grafik
+p <- ggplot() +
+  geom_violin(data = heart_data, aes(x=ChestPainTypeOverall, y=RestingBP), trim=FALSE, fill="lightblue", color="blue", scale="width") +
+  geom_violin(data = heart_data, aes(x=ChestPainType, y=RestingBP), trim=FALSE, fill="lightblue", color="blue", scale="width") +
+  geom_point(data = stats, aes(x=ChestPainType, y=Mean), color="red", size=3) +
+  geom_errorbar(data = stats, aes(x=ChestPainType, ymin=Mean-SD, ymax=Mean+SD), width=0.2, color="darkred") +
+  labs(title="RestingBP Distributions for ChestPainType Categories and Overall",
+       x="Category",
+       y="RestingBP") +
+  theme_minimal() +
+  scale_x_discrete(limits=c(unique(heart_data$ChestPainType), "All"))
+
+print(p)
+```
+
+## Explorative Analyse
+
+### Verteilungen
+
+-   Normalverteilung von Ruheblutdruck.
+
+```{r restingBP_distribution, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(readr)
+library(dplyr)
+
+data <- read_csv("heart.csv")
+
+# Durchschnitt und Varianz berechnen
+mean_bp <- mean(data$RestingBP)
+sd_bp <- sd(data$RestingBP)
+
+# Dichte-Grafik
+density_plot <- ggplot(data, aes(x = RestingBP)) +
+  geom_density(fill = "blue", color = "black") +
+  labs(title = "Probability Distribution of Resting Blood Pressure",
+       x = "RestingBP",
+       y = "Density")
+
+# Normmalverteilung dazu
+x_values <- seq(min(data$RestingBP), max(data$RestingBP), length.out = 1000)
+normal_curve <- data.frame(RestingBP = x_values, Density = dnorm(x_values, mean = mean_bp, sd = sd_bp))
+
+# Zwei Grafiken kombinieren
+final_plot <- density_plot +
+  geom_line(data = normal_curve, aes(x = RestingBP, y = Density), color = "red") +
+  theme_minimal()
+
+final_plot
+```
+
+## Statistische Methode
+
+-   **Ziel:** Überprüfung der Hypothese, ob Brustschmerztypen den Ruheblutdruck beeinflussen.
+-   **Methode:** Varianzanalyse (ANOVA) gefolgt von einem Tukey-HSD-Test.
+
+## Statistische Methode
+
+  **Nullhypothese H0:** Erwartungswerte des Ruheblutdrucks der vier Kategorien sind gleich.
+  
+  **Alternativhypothese H1:** Es gibt mindestens zwei Gruppen, deren Erwartungswerte sich statistisch signifikant unterscheiden.
+
+**Annahmen für ANOVA:**
+
+1. Die Beobachtungen sind unabhängig.
+2. Die Störterme sind $N(0, \sigma^2)$ verteilt.
+3. Die Varianz der verschiedenen Gruppen soll gleich sein.
+
+$$
+F\equiv {\frac {MQA}{MQR}}={\frac {\sum _{i=1}^{k}n_{i}({\overline {y}}_{i\mathbf {.} }-{\overline {y}}_{\mathbf {..} })^{2}/(k-1)}{\sum _{i=1}^{k}(n_{i}-1)s_{i}^{2}/(N-k)}}
+$$
+
+## Ergebnisse
+
+-   **ANOVA-Ergebnisse:** Einige Gruppen zeigen statistisch signifikante Unterschiede im Erwartungswert des Ruheblutdrucks.
+
+|               | Df  | Sum Sq | Mean Sq | F value | Pr(>F)   |
+|---------------|-----|--------|---------|---------|----------|
+| ChestPainType | 3   | 3101   | 1033.8  | 3.496   | 0.0153 * |
+| Residuals     | 742 | 219425 | 295.7   |         |          |
+
+Significance Codes:
+ 0 ‘\*\*\*’ 0.001 ‘\*\*’ 0.01 ‘\*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+## Ergebnisse
+
+-   **Tukey-HSD-Test:** Signifikante Unterschiede im Ruheblutdruck zwischen einigen Brustschmerztypen, aber nicht alle Unterschiede sind statistisch signifikant.
+
+| Comparison | Difference | Lower Bound | Upper Bound | Adjusted p |
+|------------|------------|-------------|-------------|------------|
+| ATA-ASY    | -3.833735  | -7.970138   | 0.302668    | 0.0805519  |
+| NAP-ASY    | -3.110059  | -7.221041   | 1.000922    | 0.2090459  |
+| TA-ASY     | 3.282927   | -4.005327   | 10.57118    | 0.6524202  |
+| NAP-ATA    | 0.723676   | -4.114931   | 5.562283    | 0.9805744  |
+| TA-ATA     | 7.116662   | -0.605423   | 14.83875    | 0.0832181  |
+| TA-NAP     | 6.392986   | -1.315511   | 14.10148    | 0.1428788  |
+
+
+## Schlussfolgerung
+
+-   Die Analyse deutet auf eine komplexe Beziehung zwischen Brustschmerztyp und Ruheblutdruck hin.
+-   Weitere Forschung ist notwendig, um diese Beziehungen vollständig zu verstehen und die Ursachen von Herzkrankheiten besser zu identifizieren.
+
+## Repository-Link
+
+-   Besuchen Sie unser GitHub-Repository für den vollständigen Code und weitere Details: [**GitHub-Link**](https://gitlab.lrz.de/kirill_khvastow/r-projekt-gruppe-99)
